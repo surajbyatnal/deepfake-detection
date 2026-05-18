@@ -11,11 +11,11 @@ from PIL import Image
 from torchvision import transforms
 
 # Setup paths
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
-from model.vit_cnn_model import HybridModel
+from vit_cnn_model import HybridModel
 
 # Create Flask app
 app = Flask(__name__)
@@ -29,12 +29,28 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Load model
 print("Loading model...")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = HybridModel(cnn_backbone='resnet18', cnn_pretrained=False, vit_pretrained=False).to(device)
-checkpoint_path = os.path.join(REPO_ROOT, 'checkpoints', 'best.pth')
-checkpoint = torch.load(checkpoint_path, map_location=device)
-model.load_state_dict(checkpoint['model_state'])
-model.eval()
-print("Model loaded successfully!")
+try:
+    model = HybridModel(
+        cnn_backbone='resnet18',
+        cnn_pretrained=False,
+        vit_pretrained=False,
+        fusion_strategy='concat'
+    ).to(device)
+    
+    checkpoint_path = os.path.join(REPO_ROOT, 'checkpoints', 'best.pth')
+    if os.path.exists(checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state'])
+        print("✅ Checkpoint loaded successfully!")
+    else:
+        print("⚠️ No checkpoint found. Model will use random weights.")
+    
+    model.eval()
+    print("✅ Model loaded successfully!")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
+    import traceback
+    traceback.print_exc()
 
 # Image transform
 transform = transforms.Compose([
@@ -49,13 +65,21 @@ transform = transforms.Compose([
 def index():
     """Serve frontend HTML"""
     static_path = os.path.join(REPO_ROOT, 'static', 'index.html')
-    with open(static_path, 'r', encoding='utf-8') as f:
-        return f.read()
+    if os.path.exists(static_path):
+        with open(static_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    else:
+        return jsonify({'error': 'index.html not found'}), 404
 
 @app.route('/health')
 def health():
     """Health check"""
-    return jsonify({'status': 'healthy', 'model': 'ResNet18+ViT', 'device': str(device)})
+    return jsonify({
+        'status': 'healthy',
+        'model': 'ResNet18+ViT',
+        'device': str(device),
+        'fusion_strategy': 'concat'
+    })
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -97,6 +121,8 @@ def predict():
                 os.remove(filepath)
     
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
