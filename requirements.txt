@@ -7,3 +7,4 @@ numpy>=1.21.0
 Flask>=2.3.0
 Flask-CORS>=4.0.0
 Werkzeug>=2.3.0
+streamlit>=1.28.0
